@@ -57,17 +57,25 @@ sanitizers.halfRight = function(glyph, gid) {
 	deleteGPOS(this.font, gid);
 	return glyph;
 };
-sanitizers.halfComp = function(glyph, gid, isType = false) {
-	const targetW = Math.min(
-		this.em,
-		Math.ceil(glyph.advanceWidth / this.em) * (this.em * (isType ? 1 : 1 / 2))
-	);
-	if (!glyph.contours) return glyph;
-	for (let c of glyph.contours) for (let z of c) z.x *= targetW / glyph.advanceWidth;
-	glyph.advanceWidth = targetW;
-	deleteGPOS(this.font, gid);
-	return glyph;
-};
+
+function HalfCompN(n, ov) {
+	return function(glyph, gid, isType = false) {
+		const targetW = Math.min(
+			this.em * n,
+			Math.ceil(glyph.advanceWidth / this.em) * (this.em * (isType || ov ? 1 : 1 / 2))
+		);
+		if (glyph.contours) {
+			for (let c of glyph.contours) for (let z of c) z.x *= targetW / glyph.advanceWidth;
+		}
+		glyph.advanceWidth = targetW;
+		deleteGPOS(this.font, gid);
+		return glyph;
+	};
+}
+
+sanitizers.halfComp = HalfCompN(1);
+sanitizers.halfComp2 = HalfCompN(2);
+sanitizers.halfComp3 = HalfCompN(3);
 
 const sanitizerTypes = {
 	"“": "halfRight",
@@ -79,8 +87,8 @@ const sanitizerTypes = {
 	"\u2011": "halfComp",
 	"\u2012": "halfComp",
 	"\u2010": "halfComp",
-	"\u2e3a": "halfComp",
-	"\u2e3b": "halfComp"
+	"\u2e3a": "halfComp2",
+	"\u2e3b": "halfComp3"
 };
 
 exports.sanitizeSymbols = async function sanitizeSymbols(isType) {
@@ -98,7 +106,7 @@ exports.sanitizeSymbols = async function sanitizeSymbols(isType) {
 	}
 };
 
-exports.removeUnusedFeatures = function(a) {
+exports.removeUnusedFeatures = function(a, mono) {
 	for (let f in a.GSUB.features) {
 		if (
 			f.slice(0, 4) === "pwid" ||
@@ -111,6 +119,21 @@ exports.removeUnusedFeatures = function(a) {
 				a.GSUB.lookups[l] = null;
 			}
 			a.GSUB.features[f] = null;
+		}
+	}
+	if (mono && a.GPOS) {
+		for (let f in a.GPOS.features) {
+			if (
+				f.slice(0, 4) === "kern" ||
+				f.slice(0, 4) === "vkrn" ||
+				f.slice(0, 4) === "palt" ||
+				f.slice(0, 4) === "vpal"
+			) {
+				for (let l of a.GPOS.features[f]) {
+					a.GPOS.lookups[l] = null;
+				}
+				a.GPOS.features[f] = null;
+			}
 		}
 	}
 };
